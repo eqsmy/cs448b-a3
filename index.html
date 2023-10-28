@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Business Explorer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="container">
+        <div id="controlPanelContainer">
+            <h1>Business Explorer</h1>
+            <h2>Business Information</h2>
+            <i style="color: lightgrey">(Hover over a point on the map to view)</i>
+            <p><b>Business: </b><a id="businessName"></a></p>
+            <p><b>Rating: </b><a id="businessRating"></a></p>
+            <h2>Control Panel</h2>
+            <div>
+                <b>Filter by Intersection of Two Circles:</b>
+                <div id="slideContainer">
+                    <label for="radiusSliderA"><i>Circle A Radius: </i></label>
+                    <input type="range" min="1" max="500" value="20" class="slider" id="radiusSliderA">
+                    <br>
+                    <label for="radiusSliderB"><i>Circle B Radius: </i></label>
+                    <input type="range" min="1" max="500" value="20" class="slider" id="radiusSliderB">
+                </div>
+            </div>
+            <br>
+            <div id="starsContainer">
+                <b>Filter by Minimum Rating:</b>
+            </div>
+            <script>
+                // ADDING STARS AND FILTERING BY RATING
+
+                function filterByRating(numStars) {
+                    d3.selectAll('circle.businessDot').style('visibility', function () {
+                        let currRating = d3.select(this).attr('rating')
+                        if (currRating < numStars) {
+                            return "hidden"
+                        } else {
+                            return "visible"
+                        }
+                    })
+                }
+
+                var starsSvg = d3.select('#starsContainer').append('svg')
+                    .attr('width', 300)
+                    .attr('height', 100);
+                var starContainer = d3.select("#starsContainer")
+                var stars = []
+                for (let i = 1; i <= 5; i++) {
+                    stars.push(
+                        starsSvg.append("path")
+                            .attr('id', 'star' + i.toString())
+                            .attr('transform', "translate(" + (35 * i) + ",30)")
+                            .attr("d", d3.symbol(d3.symbolStar, 300))
+                            .style('fill', 'grey')
+                            .on('click', function () {
+                                if (d3.select(this).style('fill') == 'goldenrod' && (d3.select('#star' + (i + 1).toString()).style('fill') == 'grey')) {
+                                    d3.select(this).style('fill', 'grey')
+                                    filterByRating(i - 1)
+                                    return
+                                }
+                                for (let j = 1; j <= 5; j++) {
+                                    d3.select('#star' + j.toString()).style('fill', function () {
+                                        if (j <= i) {
+                                            return 'goldenrod'
+                                        } else {
+                                            return 'grey'
+                                        }
+                                    })
+                                }
+                                filterByRating(d3.select(this).attr('id').substring(4))
+                            })
+                    )
+                }
+            </script>
+        </div>
+        <div id="mapContainer">
+            <script>
+                // GENERAL SETUP 
+
+                // Set up size
+                var mapWidth = 620;
+                var mapHeight = 800;
+
+                // Set up projection that the map is using
+                var mapFrameGeoJSON = JSON.parse(`{"type":"Feature","geometry":{"type":"LineString","coordinates":[[-122.54644297642132,37.989209933976475],[-121.74157680240731,37.19360698897229]]}}`)
+                var projection = d3.geoConicConformal()
+                    .parallels([37 + 4 / 60, 38 + 26 / 60])
+                    .rotate([120 + 30 / 60], 0)
+                    .fitSize([mapWidth, mapHeight], mapFrameGeoJSON)
+
+                // Add an SVG element to the DOM
+                var svg = d3.select('#container').append('svg')
+                    .attr('width', mapWidth)
+                    .attr('height', mapHeight);
+
+                // Add the static PNG map at correct size, assuming map is saved in a subdirectory called `data`
+                svg.append('image')
+                    .attr('width', mapWidth)
+                    .attr('height', mapHeight)
+                    .attr('xlink:href', 'data/map.png');
+            </script>
+            <script>
+                // INTERSECTION CIRCLES FILTERING AND HELPERS
+
+                function filterByCircle() {
+                    var circleA = d3.select('#circleA')
+                    var circleB = d3.select('#circleB')
+                    d3.selectAll('circle.businessDot').style('fill', function () {
+                        let locX = d3.select(this).attr('cx')
+                        let locY = d3.select(this).attr('cy')
+                        let withinA = Math.sqrt((locX - circleA.attr('cx')) ** 2 + (locY - circleA.attr('cy')) ** 2) < circleA.attr('r')
+                        let withinB = Math.sqrt((locX - circleB.attr('cx')) ** 2 + (locY - circleB.attr('cy')) ** 2) < circleB.attr('r')
+                        if (withinA && withinB) {
+                            return 'blue'
+                        } else {
+                            return 'grey'
+                        }
+                    })
+                }
+                function dragStarted() {
+                    d3.select(this).attr('stroke', 'red').attr('stroke-width', '3px');
+                }
+                function dragged(event, d) {
+                    d3.select(this).attr('cx', event.x).attr('cy', event.y)
+                }
+                function dragEnded(event) {
+                    d3.select(this).attr('stroke', null);
+                    filterByCircle()
+                }
+            </script>
+            <script>
+                // ADDING BUSINESS CIRCLES
+
+                d3.csv("./data/data.csv", function (data) {
+                    var projectedLocation = projection([data.Longitude, data.Latitude]);
+                    var circle = svg.append('circle')
+                        .attr('cx', projectedLocation[0])
+                        .attr('cy', projectedLocation[1])
+                        .attr('class', 'businessDot')
+                        .attr('id', data.ID)
+                        .attr('rating', data.Average_Rating)
+                        .attr('r', 2)
+                        .style('fill', 'grey');
+                    circle.on('mouseover', function () {
+                        document.getElementById('businessName').innerText = data.Name
+                        document.getElementById('businessRating').innerText = data.Average_Rating
+                    }).on('mouseout', function () {
+                        document.getElementById('businessName').innerText = null
+                        document.getElementById('businessRating').innerText = null
+                    })
+                });
+            </script>
+            <script>
+                // ADDING INTERSECTION CIRCLES AND RADIUS SLIDERS
+
+                var aLoc = [30, mapHeight - 40]
+                var defaultR = 20
+                var aCircle = svg.append('circle')
+                    .attr('cx', aLoc[0])
+                    .attr('cy', aLoc[1])
+                    .attr('r', defaultR)
+                    .style('fill', 'black')
+                    .attr('id', 'circleA')
+                    .style('fill-opacity', '20%').call(d3.drag()
+                        .on('start', dragStarted)
+                        .on('drag', dragged)
+                        .on('end', dragEnded)
+                    );
+
+                var bLoc = [80, mapHeight - 40]
+                var bCircle = svg.append('circle')
+                    .attr('cx', bLoc[0])
+                    .attr('cy', bLoc[1])
+                    .attr('r', defaultR)
+                    .attr('id', 'circleB')
+                    .style('fill', 'black').style('fill-opacity', '20%').call(d3.drag()
+                        .on('start', dragStarted)
+                        .on('drag', dragged)
+                        .on('end', dragEnded)
+                    );
+
+                d3.select('#radiusSliderA').on('mouseover', function () {
+                    d3.select('#circleA').style('fill-opacity', '90%')
+                }).on('mouseout', function () {
+                    d3.select('#circleA').style('fill-opacity', '20%')
+                }).on('change', function () {
+                    d3.select('#circleA').attr('r', document.getElementById('radiusSliderA').value); filterByCircle()
+                })
+                d3.select('#radiusSliderB').on('mouseover', function () {
+                    d3.select('#circleB').style('fill-opacity', '90%')
+                }).on('mouseout', function () {
+                    d3.select('#circleB').style('fill-opacity', '20%')
+                }).on('change', function () {
+                    d3.select('#circleB').attr('r', document.getElementById('radiusSliderB').value); filterByCircle()
+                })
+            </script>
+        </div>
+    </div>
+</body>
+
+</html>
